@@ -10,7 +10,7 @@ library(data.table)
 # Load data
 rm(list = ls())
 setwd("/Users/carolinkilian/Local data space/CannaStreet/data_cannastreet_20260318/SAV/")
-DATE <- 20260427
+DATE <- 20261120
 
 cannastreet_t0 <- read_sav("full_GER_wave1_cleaned_20260318.sav")
 cannastreet_t1 <- read_sav("full_GER_wave2_cleaned_20260318.sav")
@@ -76,10 +76,10 @@ cdat <- pdat %>%
 # selection of relevant variables
 
 cdat_short <- cdat %>% 
-  select(c(jahr, survey, sample, gkz, sex, alter, age_gr, education, alc_any, alc_daily, DEGURBA))
+  dplyr::select(c(jahr, survey, sample, gkz, sex, alter, age_gr, education, alc_any, alc_daily, DEGURBA, weights_ohneWiederbefragt, weights_gesamt))
 
 # ------------------------------------------------------------------------------------------------------------------
 
 # save 
 
-saveRDS(cdat_short, paste0("/Users/carolinkilian/Desktop/Research projects/DEBRA Alkohol/Data/", DATE,"_cannastreet.rds"))
+saveRDS(cdat_short, paste0("/Users/carolinkilian/Desktop/Research projects/Alcohol Spatial Modelling/Data/", DATE,"_cannastreet.rds"))

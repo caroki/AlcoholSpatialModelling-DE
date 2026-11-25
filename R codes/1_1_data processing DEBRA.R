@@ -10,7 +10,7 @@ library(data.table)
 # Load data
 rm(list = ls())
 setwd("/Users/carolinkilian/Local data space/DEBRA/")
-DATE <- 20260427
+DATE <- 20261120
 
 debra <- read_sav("DEBRA_up-toW04_2025_korrigiertMigration_degurba.sav")
 
@@ -94,10 +94,10 @@ cdat <- pdat %>%
 # selection of relevant variables
 
 cdat_short <- cdat %>% 
-  select(c(jahr, season, surveywave, gkz, sex, alter, age_gr, education, migration, alc_any, alc_daily, alc_hed, DEGURBA))
+  select(c(jahr, season, surveywave, gkz, sex, alter, age_gr, education, migration, alc_any, alc_daily, alc_hed, DEGURBA, Smoker_pp))
 
-# ------------------------------------------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------------------------------------------# ----Smoker_pp--------------------------------------------------------------------------------------------------------------
 
 # save 
 
-saveRDS(cdat_short, paste0("/Users/carolinkilian/Desktop/Research projects/DEBRA Alkohol/Data/", DATE,"_debra.rds"))
+saveRDS(cdat_short, paste0("/Users/carolinkilian/Desktop/Research projects/Alcohol Spatial Modelling/Data/", DATE,"_debra.rds"))

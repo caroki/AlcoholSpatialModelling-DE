@@ -10,12 +10,16 @@ library(sf)
 library(scales)
 library(haven)
 library(ggsflabel)
+library(biscale)
+library(viridisLite)
+library(colorspace)
+library(patchwork)
 
 # Load data
 rm(list = ls())
 setwd("/Users/carolinkilian/Desktop/Research projects/Alcohol Spatial Modelling/Data/")
-path_out <- "/Users/carolinkilian/Desktop/Research projects/Alcohol Spatial Modelling/Output/"
-DATE <- 20260629
+path_out <- "/Users/carolinkilian/Desktop/Research projects/Alcohol Spatial Modelling/Github/AlcoholSpatialModelling-DE/Output/"
+DATE <- 20261106
 
 data <- readRDS("20260629_data_combined.rds")
 de_sf <- st_read("NUTS_RG_20M_2024_3035.shp/NUTS_RG_20M_2024_3035.shp") %>% filter(CNTR_CODE == "DE")
@@ -42,6 +46,22 @@ format_n <- function(var) {
   x <- round((var), 0)
   out <- format(x, big.mark = ",", nsmall = 0)
   return(out)
+}
+
+lci_prop <- function(var) {
+  prop <- mean(var, na.rm = T)
+  n <- length(na.omit(var))
+  se <- 1.96 * sqrt(prop * (1 - prop) / n)
+  lci <- prop - se
+  return(lci)
+}
+
+uci_prop <- function(var) {
+  prop <- mean(var, na.rm = T)
+  n <- length(na.omit(var))
+  se <- 1.96 * sqrt(prop * (1 - prop) / n)
+  uci <- prop + se
+  return(uci)  
 }
 
 # ------------------------------------------------------------------------------------------------------------------
@@ -174,7 +194,7 @@ write.xlsx(dat_out,paste0(path_out, Sys.Date(), "_DescriptivesByState.xlsx"))
 # Get this data at NUTS3 level
 
 dat_desc_nuts3 <- data %>% 
-  filter(!is.na(alc_daily)) %>% 
+  filter(!is.na(alc_daily)) %>% # excluded: n = 629, new n = 87507
   mutate(sex_di = ifelse(sex == "men", 0, ifelse(sex == "women", 1, NA)),
          DEGURBA_rural = ifelse(as.numeric(DEGURBA) == 3, 1, ifelse(as.numeric(DEGURBA) != 3, 0, NA)), 
          DEGURBA_cities = ifelse(as.numeric(DEGURBA) == 1, 1, ifelse(as.numeric(DEGURBA) != 1, 0, NA)),
@@ -182,17 +202,17 @@ dat_desc_nuts3 <- data %>%
          education_high = ifelse(education == "high", 1, ifelse(education != "high", 0, NA))) %>% 
   group_by(gkz_5, region_name) %>% 
   summarise(nsample = n(),
-            women = mean(sex_di), n_women = sum(sex_di),
+            women = mean(sex_di), lci_women = lci_prop(sex_di), uci_women = uci_prop(sex_di), 
             age = mean(alter), age_sd = sd(alter),
-            edu_low = mean(education_low), n_edu_low = sum(education_low),
-            edu_high = mean(education_high), n_edu_high = sum(education_high),
-            alcDaily = mean(alc_daily, na.rm=T), n_alcDaily = sum(alc_daily), 
-            rural = mean(DEGURBA_rural), n_rural = sum(DEGURBA_rural), 
-            cities = mean(DEGURBA_cities), n_cities = sum(DEGURBA_cities), 
+            edu_low = mean(education_low), lci_edu_low = lci_prop(education_low), uci_edu_low = uci_prop(education_low),
+            edu_high = mean(education_high), lci_edu_high = lci_prop(education_high), uci_edu_low = uci_prop(education_high),
+            alcDaily = mean(alc_daily, na.rm=T), lci_alcDaily = lci_prop(alc_daily), uci_alcDaily = uci_prop(alc_daily), 
+            rural = mean(DEGURBA_rural), lci_rural = lci_prop(DEGURBA_rural), uci_rural = uci_prop(DEGURBA_rural), 
+            cities = mean(DEGURBA_cities), lci_cities = lci_prop(DEGURBA_cities), uci_cities = uci_prop(DEGURBA_cities), 
             gisd = median(gisd_score), gisd_low = quantile(gisd_score, 0.25), gisd_upp = quantile(gisd_score, 0.75), 
             hosprate = mean(hosprate)) 
 
-saveRDS(dat_desc_nuts3, paste0(path_out, Sys.Date(), "_Descriptives.rds"))
+write.xlsx(dat_desc_nuts3, paste0(path_out, Sys.Date(), "_Descriptives.xlsx"))
 
 
 # Visualise GISD by Kreis
@@ -245,30 +265,42 @@ sub <- data %>% filter(gkz_5 %in% select) %>%
   group_by(gkz_5) %>% 
   summarise(nsample = n(),
             alcDaily = mean(alc_daily, na.rm = T),
-            alcHED = mean(alc_hed, na.rm = T))
+            alcHED = mean(alc_hed, na.rm = T)) 
 
 dat_map <- de_sf %>% merge(., nuts3code, by.x = "NUTS_ID", by.y = "NUTS3", all = F) %>% 
   merge(., sub, by.x = "Amtlicher.Regionalschlüssel", by.y = "gkz_5", all.x = T) 
 
-data %>% filter(gkz_5 == "03354" | gkz_5 == "03360") %>% 
-  mutate(sex_di = ifelse(sex == "men", 0, ifelse(sex == "women", 1, NA))) %>% 
-  group_by(gkz_5) %>% 
-  summarise(nsample = n(), 
-            women = mean(sex_di), 
-            age = mean(alter), 
-            minage = min(alter),
-            maxage = max(alter),
-            lowedu = mean(ifelse(education == "low", 1, 0)),
-            highedu = mean(ifelse(education == "high", 1, 0)))
+# get desired minimum sample size for display purposes, assuming precision of 2 percentage points 
+n_req <- ceiling((1.96^2 * mean(data$alc_daily, na.rm = T) * (1 - mean(data$alc_daily, na.rm = T))) / 0.02^2)
 
-ggplot(dat_map) +
-  geom_sf(aes(fill = alcDaily), color = "black", size = 0.1) + 
+dat_map <- dat_map %>% 
+  mutate(n_cat = factor(case_when(
+    nsample >= n_req ~ 1,
+    nsample < n_req & nsample >= 0.5*n_req ~ 2,
+    nsample < 0.5*n_req & nsample >= 0.25*n_req ~ 3,
+    nsample < 0.25*n_req ~ 4), levels = c(1, 2, 3, 4),
+    labels = c(paste("n ≥", paste(n_req)), paste(paste(ceiling(0.5*n_req)), "-", paste(n_req)),
+               paste(paste(ceiling(0.25*n_req)), "-", paste(ceiling(0.5*n_req-1))), paste("n <", paste(ceiling(0.25*n_req))))))
+
+
+# Get bivariate color scale
+n_vals <- c(1, 0.75, 0.5, 0.25)
+names(n_vals) <- levels(dat_map$n_cat)
+
+dat_map <- bi_class(dat_map, x = alcDaily, y = n_cat, style = "quantile", dim = 4)
+
+p <- ggplot(dat_map) +
+  geom_sf(aes(fill = bi_class), color = "black", size = 0.1) + 
   geom_sf(data = de_sf_states, fill = NA, color = "black", size = 0.5) +
-  scale_fill_viridis_c(na.value = "grey50", labels = scales::percent) + 
+  bi_scale_fill(pal = "DkBlue2", dim = 4) + #scale_fill_viridis_c(na.value = "grey50", labels = scales::percent) + 
   labs(fill = "Observed prevalence\nfrequent alcohol use") +
   theme_void() +
   theme(legend.title = element_text(size = 16),
-        legend.text = element_text(size = 16))
+        legend.text = element_text(size = 16),
+        legend.position = "none")
 #ggsave(paste0(path_out, Sys.Date(), "_AlcDaily_observed_Combined.svg"), width = 12, height = 8, dpi = 300, bg = "white")
 
+legend <- bi_legend(pal = "DkBlue2", dim = 4, xlab = "Sample size", ylab = "Alcohol prevalence")
+
+p + inset_element(legend, left = 0.9, bottom = 0.05, right = 1.35, top = 0.5)
 
