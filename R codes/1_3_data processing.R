@@ -15,12 +15,12 @@ library(openxlsx)
 # Load data
 rm(list = ls())
 setwd("/Users/carolinkilian/Desktop/Research projects/Alcohol Spatial Modelling/Data/")
-DATE <- 20260629
+DATE <- 20261120
 
 # Load surveys
 
-debra <- readRDS("20260427_debra.rds")
-cannastreet <- readRDS("20260427_cannastreet.rds")  
+debra <- readRDS("20261120_debra.rds")
+cannastreet <- readRDS("20261120_cannastreet.rds")  
 
 # Load area-level data 
 
@@ -39,14 +39,14 @@ edu1824 <- read.csv("2000S-3057_de_flat_1824.csv", sep = ";", na.strings = "/")
 edu2599 <- read.csv("2000S-3058_de_flat_2599.csv", sep = ";", na.strings = "/")
 degurba_2021 <- st_read("DGURBA_RG_01M_2021_4258/DGURBA_RG_01M_2021_4258.shp") %>% filter(CNTR_CODE == "DE") 
 de_sf <- st_read("NUTS_RG_20M_2024_3035.shp/NUTS_RG_20M_2024_3035.shp") %>% filter(CNTR_CODE == "DE")
-nuts3code <- read.xlsx("04-kreise.xlsx", sheet = "Kreisfreie Städte u. Landkreise", startRow = 2) %>% select(c("Amtlicher.Regionalschlüssel", "NUTS3")) %>% filter(!is.na(NUTS3))
+nuts3code <- read.xlsx("04-kreise.xlsx", sheet = "Kreisfreie Städte u. Landkreise", startRow = 2) %>% dplyr::select(c("Amtlicher.Regionalschlüssel", "NUTS3")) %>% filter(!is.na(NUTS3))
 
 # ------------------------------------------------------------------------------------------------------------------
 
 # Combine surveys
 
 data <- debra %>% 
-  select(-c(season, surveywave, migration)) %>% 
+  dplyr::select(-c(season, surveywave, migration)) %>% 
   mutate(survey = "debra",
          jahr = paste0("20",jahr)) %>% 
   bind_rows(cannastreet) %>% 
@@ -60,7 +60,7 @@ data <- debra %>%
 
 ggplot(gisd) + geom_line(aes(x = year, y = gisd_score, color = region_id, group = region_id)) + theme_bw() + theme(legend.position = "")
 
-sub <- gisd %>% select(region_id) %>% sample_n(50) %>% pull()
+sub <- gisd %>% dplyr::select(region_id) %>% sample_n(50) %>% pull()
 gisd_sub <- gisd %>% filter(region_id %in% sub) %>% filter(year >= 2010)
 ggplot(gisd_sub) + geom_line(aes(x = year, y = gisd_score, color = region_id, group = region_id)) + theme_bw() + theme(legend.position = "") 
 
@@ -99,7 +99,7 @@ pdat_gisd %>% filter(is.na(gisd_score)) # n = 0
 
 # alcohol-specific hospital discharges
 
-pop <- rpop %>% select(c(time, X1_variable_attribute_label, X2_variable_attribute_label, X3_variable_attribute_label, value)) %>% 
+pop <- rpop %>% dplyr::select(c(time, X1_variable_attribute_label, X2_variable_attribute_label, X3_variable_attribute_label, value)) %>% 
   rename_with(~ c("year", "state", "sex", "age", "pop"), everything()) %>% 
   filter(age != "Insgesamt") %>% mutate(age = as.numeric(gsub("[^0-9]", "", age))) %>% 
   filter(age >= 18) %>% 
@@ -143,7 +143,7 @@ pop <- rpop %>% select(c(time, X1_variable_attribute_label, X2_variable_attribut
     state == "Thüringen" ~ "16",
     TRUE ~ NA))
 
-hosp <- do.call(rbind, mget(ls(pattern = "hosp_"))) %>% select(c(time, X4_variable_attribute_label, X5_variable_attribute_code, X2_variable_attribute_label, X3_variable_attribute_label, value)) %>% 
+hosp <- do.call(rbind, mget(ls(pattern = "hosp_"))) %>% dplyr::select(c(time, X4_variable_attribute_label, X5_variable_attribute_code, X2_variable_attribute_label, X3_variable_attribute_label, value)) %>% 
   rename_with(~ c("year", "state", "icd", "sex", "age", "hosp"), everything()) %>% 
   mutate(age_gr = gsub("[^0-9]", "", age),
          age_gr = ifelse(age_gr == "9095" | age_gr == "95", "90+", age_gr)) %>% 
@@ -154,7 +154,7 @@ ggplot(hosp) + geom_point(aes(x = year, y = hosp, group = icd, color = icd)) + f
 
 # exclude state == "Ausland" or "unbekannt", calculate age-standardised hosp rate (2018 standard population)
 pop_standard <- pop %>% filter(year == "2018") %>% 
-  rename(standard_pop = pop) %>% ungroup() %>% select(-year)
+  rename(standard_pop = pop) %>% ungroup() %>% dplyr::select(-year)
 
 hosprate <- hosp %>% filter(state != "Ausland" & state != "unbekannt") %>% 
   group_by(year, state, age_gr, sex) %>% 
@@ -164,7 +164,7 @@ hosprate <- hosp %>% filter(state != "Ausland" & state != "unbekannt") %>%
   left_join(., pop_standard) %>%
   group_by(year, state, state_id, sex) %>% 
   summarise(hosprate = sum(hosprate_age * standard_pop) / sum(standard_pop) * 1000) %>% 
-  select(-sex)
+  dplyr::select(-sex)
 
 ggplot(hosprate) + geom_line(aes(x = year, y = hosprate, group = state, color = state)) + theme_bw()
       
@@ -202,7 +202,7 @@ pop.edu1824 <- edu1824 %>%
            levels = c(1,2), labels = c("men","women")),
          kreis_id = ifelse(nchar(X1_variable_attribute_code) != 5,
                            sprintf("%05s", X1_variable_attribute_code), X1_variable_attribute_code)) %>% 
-  select(c(kreis_id, sex, age_gr, education, value))
+  dplyr::select(c(kreis_id, sex, age_gr, education, value))
 
 pop.edu <- edu2599 %>% 
   mutate(age = gsub("[^0-9]", "", X3_variable_attribute_label),
@@ -227,7 +227,7 @@ pop.edu <- edu2599 %>%
            levels = c(1,2), labels = c("men","women")),
          kreis_id = ifelse(nchar(X1_variable_attribute_code) != 5,
                            sprintf("%05s", X1_variable_attribute_code), X1_variable_attribute_code)) %>% 
-  select(c(kreis_id, sex, age_gr, education, value)) %>% 
+  dplyr::select(c(kreis_id, sex, age_gr, education, value)) %>% 
   rbind(pop.edu1824) %>% group_by(kreis_id, sex, age_gr, education) %>% 
   summarise(pop = sum(value, na.rm = T))
 
@@ -255,19 +255,18 @@ pred.dat <- pred.pop %>% filter(pop > 0) %>%
   mutate(factor = pop / w) %>% # have at least w (smallest number > 0) observations per group
   uncount(weights = round(pop / factor, 0), .id = "id")
 
-# Remove lines in prediction data that have been observed 
+# Prepare observed and prediction data for merging 
 pdat_combined <- pdat_gisd_hosp %>% 
   group_by(gkz_5, sex, age_gr, education) %>% 
   mutate(id = 1:n(), source = "orig") 
 
 temp <- pred.dat %>% mutate(source = "pred") %>% 
-  select(c(gkz_5, sex, age_gr, education, DEGURBA, gisd_score, hosprate, id, source)) %>% 
-  anti_join(., pdat_combined, by = c("gkz_5", "sex", "age_gr", "education", "id")) 
+  dplyr::select(c(gkz_5, sex, age_gr, education, DEGURBA, gisd_score, hosprate, id, source)) 
 names <- names(temp)
 
 # Merge cleaned prediction data with observed data
 pred.dat <- pdat_combined %>% ungroup() %>% 
-  select(all_of(names), year, survey, sample, alc_daily) %>% 
+  dplyr::select(all_of(names), year, survey, sample, alc_daily) %>% 
   bind_rows(., temp) %>% 
   # set default
   mutate(year = ifelse(is.na(year), 2022, year),
@@ -276,9 +275,52 @@ pred.dat <- pdat_combined %>% ungroup() %>%
                          levels = c(3, 1, 2),
                          labels = c("Debra", "Bilendi", "Norstat")))
 
+# check
+
+table(pred.dat$source, pred.dat$year)
+table(pred.dat$source, pred.dat$sample)
+
+# Get alternative prediction data file based on DEBRA only (for sensitivity analysis)
+#pdat_debra <- pdat_combined %>% filter(survey == "debra")
+
+#temp <- pred.dat %>% mutate(source = "pred") %>% 
+#  dplyr::select(c(gkz_5, sex, age_gr, education, DEGURBA, gisd_score, hosprate, id, source)) %>% 
+#  anti_join(., pdat_debra, by = c("gkz_5", "sex", "age_gr", "education", "id")) 
+#names <- names(temp)
+
+# Merge cleaned prediction data with observed data
+# pred.dat_debra <- pdat_debra %>% ungroup() %>% 
+#   dplyr::select(all_of(names), year, survey, sample, alc_daily) %>% 
+#   bind_rows(., temp) %>% 
+#   # set default
+#   mutate(year = ifelse(is.na(year), 2022, year))
+# 
+# # Get alternative prediction data file based on 2022-2025 data only (for sensitivity analysis)
+# pdat_2022 <- pdat_combined %>% filter(year >= 2022)
+# 
+# temp <- pred.dat %>% mutate(source = "pred") %>% 
+#   dplyr::select(c(gkz_5, sex, age_gr, education, DEGURBA, gisd_score, hosprate, id, source)) %>% 
+#   anti_join(., pdat_2022, by = c("gkz_5", "sex", "age_gr", "education", "id")) 
+# names <- names(temp)
+# 
+# # Merge cleaned prediction data with observed data
+# pred.dat_2022 <- pdat_2022 %>% ungroup() %>% 
+#   dplyr::select(all_of(names), year, survey, sample, alc_daily) %>% 
+#   bind_rows(., temp) %>% 
+#   # set default
+#   mutate(year = ifelse(is.na(year), 2022, year),
+#          survey = ifelse(is.na(survey), "debra", survey),
+#          sample = factor(ifelse(is.na(sample), 3, sample),
+#                          levels = c(3, 1, 2),
+#                          labels = c("Debra", "Bilendi", "Norstat")))
+# 
+
 # ------------------------------------------------------------------------------------------------------------------
 
 # save 
 
 saveRDS(pdat_gisd_hosp, paste0(DATE,"_data_combined.rds"))
 saveRDS(pred.dat, paste0(DATE,"_prediction.rds"))
+ 
+# saveRDS(pred.dat_debra, paste0(DATE,"_prediction_debra.rds"))
+# saveRDS(pred.dat_2022, paste0(DATE,"_prediction_2022f.rds"))

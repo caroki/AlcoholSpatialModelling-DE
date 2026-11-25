@@ -19,15 +19,15 @@ library(writexl)
 # Load data
 rm(list = ls())
 setwd("/Users/carolinkilian/Desktop/Research projects/Alcohol Spatial Modelling/Data/")
-path_out <- "/Users/carolinkilian/Desktop/Research projects/Alcohol Spatial Modelling/Output/"
-DATE <- 20260629
+path_out <- "/Users/carolinkilian/Desktop/Research projects/Alcohol Spatial Modelling/Github/AlcoholSpatialModelling-DE/Output/"
+DATE <- 20261120
 
 de_sf <- st_read("NUTS_RG_20M_2024_3035.shp/NUTS_RG_20M_2024_3035.shp") %>% filter(CNTR_CODE == "DE") %>% filter(LEVL_CODE == 3)
 de_sf_states <- st_read("NUTS_RG_20M_2024_3035.shp/NUTS_RG_20M_2024_3035.shp") %>% filter(CNTR_CODE == "DE") %>% filter(LEVL_CODE == 1)
-nuts3code <- read.xlsx("04-kreise.xlsx", sheet = "Kreisfreie Städte u. Landkreise", startRow = 2) %>% select(c("Amtlicher.Regionalschlüssel", "NUTS3")) %>% filter(!is.na(NUTS3))
-prediction <- readRDS("20260629_prediction.rds")
+nuts3code <- read.xlsx("04-kreise.xlsx", sheet = "Kreisfreie Städte u. Landkreise", startRow = 2) %>% dplyr::select(c("Amtlicher.Regionalschlüssel", "NUTS3")) %>% filter(!is.na(NUTS3))
+prediction <- readRDS("20261120_prediction.rds")
 data_validation <- read.xlsx("data_id_148_kreis16_10_j_1640995200_roh.xlsx", sheet = "Daten", rows = c(4:405)) %>% 
-  mutate(audrate = as.numeric(gsub(",", ".", Wert))) %>% select(c("Region", "Regions-ID", "audrate"))
+  mutate(audrate = as.numeric(gsub(",", ".", Wert))) %>% dplyr::select(c("Region", "Regions-ID", "audrate"))
   
 # ------------------------------------------------------------------------------------------------------------------
 
@@ -91,9 +91,14 @@ pdat$fitted_simple_median <- model_simple$summary.fitted.values$`0.5quant`
 pdat$fitted_diff <- pdat$fitted_simple_mean - pdat$fitted_simple_median
 hist(pdat$fitted_diff) # use mean
 
-map <- pdat %>% group_by(NUTS_ID, NUTS_NUM) %>% 
-  summarise(fitted = mean(fitted_simple_mean),
-            obs = mean(alc_daily, na.rm = T)) %>% arrange(NUTS_NUM) 
+# get observed data
+obs <- pdat %>% filter(source == "orig") %>% group_by(NUTS_ID, NUTS_NUM) %>% 
+  summarise(obs = mean(alc_daily, na.rm = T),
+            n_obs = n()) %>% st_drop_geometry()
+
+# get predicted data
+map <- pdat %>% filter(source == "pred") %>% group_by(NUTS_ID, NUTS_NUM) %>% 
+  summarise(fitted = mean(fitted_simple_mean)) %>% left_join(., obs)
 
 fit_simple <- ggplot(map, aes(x=obs, y=fitted)) + geom_point() + geom_smooth() + 
   scale_x_continuous(labels = scales::percent) + scale_y_continuous(labels = scales::percent) + 
@@ -127,9 +132,9 @@ pdat$fitted_iid_median <- model_iid$summary.fitted.values$`0.5quant`
 pdat$fitted_diff <- pdat$fitted_iid_mean - pdat$fitted_iid_median
 hist(pdat$fitted_diff) #use mean
 
-map <- pdat %>% group_by(NUTS_ID, NUTS_NUM) %>% 
-  summarise(fitted = mean(fitted_iid_mean),
-            obs = mean(alc_daily, na.rm = T)) %>% arrange(NUTS_NUM) 
+# get predicted data
+map <- pdat %>% filter(source == "pred") %>% group_by(NUTS_ID, NUTS_NUM) %>% 
+  summarise(fitted = mean(fitted_iid_mean)) %>% left_join(., obs) %>% arrange(NUTS_NUM) 
 map$random <- model_iid$summary.random$NUTS_NUM$mean
 
 fit_iid <- ggplot(map, aes(x=obs, y=fitted)) + geom_point() + geom_smooth() + 
@@ -166,7 +171,7 @@ plot.nb(nb, st_geometry(de_sf), add = T)
 
 # Save for later use within INLA
 nb2INLA(paste0(DATE, "_nbmap.adj"), nb)
-g <- inla.read.graph(filename = "20260107_nbmap.adj")
+g <- inla.read.graph(filename = "20261120_nbmap.adj")
 
 # Specify model
 formula_icar <- alc_daily ~ 1 + sex + age_gr + sex*age_gr + education + sex*education + 
@@ -186,9 +191,9 @@ pdat$fitted_icar_median <- model_icar$summary.fitted.values$`0.5quant`
 pdat$fitted_diff <- pdat$fitted_icar_mean - pdat$fitted_icar_median
 hist(pdat$fitted_diff) #use mean
 
-map <- pdat %>% group_by(NUTS_ID, NUTS_NUM) %>% 
-  summarise(fitted = mean(fitted_icar_mean),
-            obs = mean(alc_daily, na.rm = T)) %>% arrange(NUTS_NUM) 
+# get predicted data
+map <- pdat %>% filter(source == "pred") %>% group_by(NUTS_ID, NUTS_NUM) %>% 
+  summarise(fitted = mean(fitted_icar_mean)) %>% left_join(., obs) %>% arrange(NUTS_NUM) 
 map$random <- model_icar$summary.random$NUTS_NUM$mean
 
 fit_icar <- ggplot(map, aes(x=obs, y=fitted)) + geom_point() + geom_smooth() +
@@ -233,15 +238,14 @@ pdat$fitted_bym_lci <- model_bym$summary.fitted.values$`0.025quant`
 pdat$fitted_bym_uci <- model_bym$summary.fitted.values$`0.975quant`
 pdat$fitted_bym_median <- model_bym$summary.fitted.values$`0.5quant`
 
-
 pdat$fitted_diff <- pdat$fitted_bym_mean - pdat$fitted_bym_median
 hist(pdat$fitted_diff) #use mean
 
-map <- pdat %>% group_by(NUTS_ID, NUTS_NUM) %>% 
+# get predicted data
+map <- pdat %>% filter(source == "pred") %>% group_by(NUTS_ID, NUTS_NUM) %>% 
   summarise(fitted = mean(fitted_bym_mean),
             fitted_lci = mean(fitted_bym_lci),
-            fitted_uci = mean(fitted_bym_uci),
-            obs = mean(alc_daily, na.rm = T)) %>% arrange(NUTS_NUM) 
+            fitted_uci = mean(fitted_bym_uci)) %>% left_join(., obs) %>% arrange(NUTS_NUM) 
 map$randomIID <- model_bym$summary.random$NUTS_NUM$mean[1:400]
 map$randomicar <- model_bym$summary.random$NUTS_NUM$mean[401:800]
 
@@ -281,12 +285,12 @@ model_comp <- table_model_comparison(models = list(model_simple, model_iid, mode
   mutate(model = c("simple", "iid", "icar", "bym"))
 write.xlsx(model_comp, paste0(path_out, Sys.Date(), "_ModelComparison.xlsx"))
 
-# Plot CPO
-cpo <- cbind(simple = model_simple$cpo$cpo, iid = model_iid$cpo$cpo, icar = model_icar$cpo$cpo, bym = model_bym$cpo$cpo) %>% 
-  as.data.frame() %>% pivot_longer(cols = c("simple", "iid", "icar", "bym"), names_to = "model", values_to = "cpo") 
-
-ggplot(cpo) + geom_histogram(aes(x = cpo)) + facet_wrap(~model, ncol = 2) + theme_bw()
-ggsave(paste0(path_out, Sys.Date(), "_Combined_CPO.svg"), width = 6, height = 6, dpi = 300, bg = "white")
+# # Plot CPO
+# cpo <- cbind(simple = model_simple$cpo$cpo, iid = model_iid$cpo$cpo, icar = model_icar$cpo$cpo, bym = model_bym$cpo$cpo) %>% 
+#   as.data.frame() %>% pivot_longer(cols = c("simple", "iid", "icar", "bym"), names_to = "model", values_to = "cpo") 
+# 
+# ggplot(cpo) + geom_histogram(aes(x = cpo)) + facet_wrap(~model, ncol = 2) + theme_bw()
+# ggsave(paste0(path_out, Sys.Date(), "_Combined_CPO.svg"), width = 6, height = 6, dpi = 300, bg = "white")
 
 # Plot model fit
 ggarrange(fit_simple, fit_iid, fit_icar, fit_bym,
@@ -348,27 +352,27 @@ map <- map %>%
     levels = c("low", "medium", "high"),
     labels = c("1st quartile", "2nd - 3rd quartile", "4th quartile")))
 
-ggplot(map) +
-  geom_sf(aes(fill = AlcRank), color = "black", size = 0.1) + 
-  geom_sf(data = de_sf_states, fill = NA, color = "black", size = 0.5) +
-  scale_fill_manual(values = c("#a6d96a", "#ffffbf", "#fdae61")) + 
-  labs(fill = "") + theme_void() + theme(legend.position = "bottom")
-ggsave(paste0(path_out, Sys.Date(), "_AlcRank_BYMmodel.svg"), width = 6, height = 8, dpi = 300, bg = "white")
+# ggplot(map) +
+#   geom_sf(aes(fill = AlcRank), color = "black", size = 0.1) + 
+#   geom_sf(data = de_sf_states, fill = NA, color = "black", size = 0.5) +
+#   scale_fill_manual(values = c("#a6d96a", "#ffffbf", "#fdae61")) + 
+#   labs(fill = "") + theme_void() + theme(legend.position = "bottom")
+# ggsave(paste0(path_out, Sys.Date(), "_AlcRank_BYMmodel.svg"), width = 6, height = 8, dpi = 300, bg = "white")
 
 
 # Plot model fit 
 
-ggplot(map, aes(x=obs, y=fitted)) + geom_point() + geom_smooth() + 
-  scale_x_continuous(labels = scales::percent) + scale_y_continuous(labels = scales::percent) + 
-  labs(x = "Observed prevalence", y = "Predicted prevalence") + theme_bw() 
+ggplot(map) + geom_point(aes(x=obs, y=fitted, size = n_obs, alpha = n_obs)) + geom_smooth(aes(x=obs, y=fitted)) + 
+  scale_x_continuous(labels = scales::percent) + scale_y_continuous(labels = scales::percent) + scale_alpha(range = c(0.3, 1)) +
+  labs(x = "Observed prevalence", y = "Predicted prevalence") + theme_bw() + theme(legend.position = "none")
 ggsave(paste0(path_out, Sys.Date(), "_Combined_BYMmodel_fit.svg"), width = 8, height = 6, dpi = 300, bg = "white")
 
 # Save output
 
-names <- de_sf %>% st_drop_geometry() %>% select(c(NUTS_ID, NUTS_NAME)) %>% mutate(NUTS_ID_state = as.factor(substr(NUTS_ID, 1, 3)))
-stnames <- de_sf_states %>% select(c(NUTS_ID, NUTS_NAME)) %>% rename(NUTS_ID_state = NUTS_ID, NUTS_NAME_state = NUTS_NAME) %>% left_join(names) %>% st_drop_geometry()
+names <- de_sf %>% st_drop_geometry() %>% dplyr::select(c(NUTS_ID, NUTS_NAME)) %>% mutate(NUTS_ID_state = as.factor(substr(NUTS_ID, 1, 3)))
+stnames <- de_sf_states %>% dplyr::select(c(NUTS_ID, NUTS_NAME)) %>% rename(NUTS_ID_state = NUTS_ID, NUTS_NAME_state = NUTS_NAME) %>% left_join(names) %>% st_drop_geometry()
 pred.out <- map %>% left_join(stnames) %>% st_drop_geometry() %>% ungroup() %>% 
-  mutate_if(is.numeric, ~round(.*100,1)) %>% select(c(NUTS_NAME_state, NUTS_NAME, fitted, fitted_lci, fitted_uci)) 
+  mutate_if(is.numeric, ~round(.*100,1)) %>% dplyr::select(c(NUTS_NAME_state, NUTS_NAME, fitted, fitted_lci, fitted_uci)) 
 saveRDS(pred.out, paste0(path_out, Sys.Date(), "_Pred_BYM.rds"))
 
 pred.out %>% summarise(mean = mean(fitted), median = quantile(fitted, 0.5))
